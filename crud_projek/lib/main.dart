@@ -4,7 +4,6 @@ void main() {
   runApp(const ReservationApp());
 }
 
-// GlobalKey untuk menangani SnackBar agar tidak error context
 final GlobalKey<ScaffoldMessengerState> messengerKey =
     GlobalKey<ScaffoldMessengerState>();
 
@@ -28,12 +27,16 @@ class Reservation {
     required this.sportField,
     required this.note,
     required this.createdBy,
+    required this.startTime,
+    required this.endTime,
   });
   final String id;
   String customerName;
   String sportField;
   String note;
   final String createdBy;
+  TimeOfDay startTime;
+  TimeOfDay endTime;
 }
 
 class ReservationApp extends StatefulWidget {
@@ -65,6 +68,8 @@ class _ReservationAppState extends State<ReservationApp> {
       sportField: 'Futsal A',
       note: 'Lunas',
       createdBy: 'admin',
+      startTime: const TimeOfDay(hour: 18, minute: 0),
+      endTime: const TimeOfDay(hour: 19, minute: 0),
     ),
   ];
 
@@ -81,18 +86,26 @@ class _ReservationAppState extends State<ReservationApp> {
     }
   }
 
-  // --- FUNGSI CRUD ---
   void _add(Reservation r) => setState(() => _reservations.add(r));
 
   void _delete(String id) =>
       setState(() => _reservations.removeWhere((r) => r.id == id));
 
-  void _update(String id, String newField, String newNote) {
+  // Update fungsi agar menerima waktu baru
+  void _update(
+    String id,
+    String newField,
+    String newNote,
+    TimeOfDay start,
+    TimeOfDay end,
+  ) {
     final index = _reservations.indexWhere((r) => r.id == id);
     if (index != -1) {
       setState(() {
         _reservations[index].sportField = newField;
         _reservations[index].note = newNote;
+        _reservations[index].startTime = start;
+        _reservations[index].endTime = end;
       });
     }
   }
@@ -117,7 +130,6 @@ class _ReservationAppState extends State<ReservationApp> {
   }
 }
 
-// --- HALAMAN LOGIN ---
 class LoginPage extends StatelessWidget {
   LoginPage({super.key, required this.onLogin});
   final Function(String, String) onLogin;
@@ -163,7 +175,6 @@ class LoginPage extends StatelessWidget {
   }
 }
 
-// --- HALAMAN DASHBOARD (READ & DELETE) ---
 class DashboardPage extends StatelessWidget {
   const DashboardPage({
     super.key,
@@ -174,12 +185,13 @@ class DashboardPage extends StatelessWidget {
     required this.onDelete,
     required this.onUpdate,
   });
+
   final AppUser user;
   final List<Reservation> data;
   final VoidCallback onLogout;
   final Function(Reservation) onAdd;
   final Function(String) onDelete;
-  final Function(String, String, String) onUpdate;
+  final Function(String, String, String, TimeOfDay, TimeOfDay) onUpdate;
 
   @override
   Widget build(BuildContext context) {
@@ -199,8 +211,15 @@ class DashboardPage extends StatelessWidget {
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
             child: ListTile(
-              title: Text(r.sportField),
-              subtitle: Text("Pemesan: ${r.customerName}\nCatatan: ${r.note}"),
+              title: Text(
+                r.sportField,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                "👤 Pemesan: ${r.customerName}\n"
+                "⏰ Waktu: ${r.startTime.format(ctx)} - ${r.endTime.format(ctx)}\n"
+                "📝 Catatan: ${r.note}",
+              ),
               trailing: isOwner
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
@@ -228,83 +247,155 @@ class DashboardPage extends StatelessWidget {
   }
 
   void _showAddDialog(BuildContext context) {
+    final g = TextEditingController();
     final f = TextEditingController();
     final n = TextEditingController();
+    TimeOfDay start = const TimeOfDay(hour: 18, minute: 0);
+    TimeOfDay end = const TimeOfDay(hour: 19, minute: 0);
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Tambah Reservasi"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: f,
-              decoration: const InputDecoration(labelText: "Nama Lapangan"),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Tambah Reservasi"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: g,
+                  decoration: const InputDecoration(
+                    labelText: "Nama Pelanggan",
+                  ),
+                ),
+                TextField(
+                  controller: f,
+                  decoration: const InputDecoration(labelText: "Nama Lapangan"),
+                ),
+                TextField(
+                  controller: n,
+                  decoration: const InputDecoration(labelText: "Catatan"),
+                ),
+                ListTile(
+                  title: Text("Mulai: ${start.format(context)}"),
+                  trailing: const Icon(Icons.access_time),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: start,
+                    );
+                    if (time != null) setDialogState(() => start = time);
+                  },
+                ),
+                ListTile(
+                  title: Text("Selesai: ${end.format(context)}"),
+                  trailing: const Icon(Icons.history_toggle_off),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: end,
+                    );
+                    if (time != null) setDialogState(() => end = time);
+                  },
+                ),
+              ],
             ),
-            TextField(
-              controller: n,
-              decoration: const InputDecoration(labelText: "Catatan"),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Batal"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                onAdd(
+                  Reservation(
+                    id: DateTime.now().toString(),
+                    customerName: g.text.isEmpty ? user.displayName : g.text,
+                    sportField: f.text,
+                    note: n.text,
+                    createdBy: user.username,
+                    startTime: start,
+                    endTime: end,
+                  ),
+                );
+                Navigator.pop(ctx);
+              },
+              child: const Text("Simpan"),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Batal"),
-          ),
-          TextButton(
-            onPressed: () {
-              onAdd(
-                Reservation(
-                  id: DateTime.now().toString(),
-                  customerName: user.displayName,
-                  sportField: f.text,
-                  note: n.text,
-                  createdBy: user.username,
-                ),
-              );
-              Navigator.pop(ctx);
-            },
-            child: const Text("Simpan"),
-          ),
-        ],
       ),
     );
   }
 
   void _showEditDialog(BuildContext context, Reservation r) {
+    final g = TextEditingController(text: r.customerName);
     final f = TextEditingController(text: r.sportField);
     final n = TextEditingController(text: r.note);
+    TimeOfDay start = r.startTime;
+    TimeOfDay end = r.endTime;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Edit Reservasi"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: f,
-              decoration: const InputDecoration(labelText: "Nama Lapangan"),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Edit Reservasi"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: g,
+                  decoration: const InputDecoration(
+                    labelText: "Nama Pelanggan",
+                  ),
+                ),
+                TextField(
+                  controller: f,
+                  decoration: const InputDecoration(labelText: "Nama Lapangan"),
+                ),
+                TextField(
+                  controller: n,
+                  decoration: const InputDecoration(labelText: "Catatan"),
+                ),
+                ListTile(
+                  title: Text("Mulai: ${start.format(context)}"),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: start,
+                    );
+                    if (time != null) setDialogState(() => start = time);
+                  },
+                ),
+                ListTile(
+                  title: Text("Selesai: ${end.format(context)}"),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: end,
+                    );
+                    if (time != null) setDialogState(() => end = time);
+                  },
+                ),
+              ],
             ),
-            TextField(
-              controller: n,
-              decoration: const InputDecoration(labelText: "Catatan"),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Batal"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                onUpdate(r.id, f.text, n.text, start, end);
+                Navigator.pop(ctx);
+              },
+              child: const Text("Update"),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Batal"),
-          ),
-          TextButton(
-            onPressed: () {
-              onUpdate(r.id, f.text, n.text);
-              Navigator.pop(ctx);
-            },
-            child: const Text("Update"),
-          ),
-        ],
       ),
     );
   }
